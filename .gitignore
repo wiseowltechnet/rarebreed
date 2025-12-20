@@ -1,0 +1,86 @@
+# Build outputs
+build/
+dist/
+target/
+out/
+*.jar
+*.war
+*.ear
+*.zip
+*.tar
+*.tar.gz
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+node_modules/
+.gradle/
+.m2/
+
+# Secrets and credentials
+*.key
+*.pem
+*.p12
+*.jks
+credentials.json
+.env
+.env.local
+secrets/
+
+# Large files
+*.iso
+*.dmg
+*.img
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.mp4
+*.mov
+*.avi
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.pid
+*.port
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.pytest_cache/
+.hypothesis/
+
+# Swift
+.build/
+Package.resolved
+*.xcworkspace
+*.xcuserdata
+
+# Backup files
+*.bak
+*.backup
+*~

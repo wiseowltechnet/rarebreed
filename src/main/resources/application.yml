@@ -1,0 +1,22 @@
+micronaut:
+  application:
+    name: video-player
+  server:
+    port: -1
+  http:
+    client:
+      read-timeout: 30s
+
+jackson:
+  default-property-inclusion: non_null
+  serialization:
+    write-dates-as-timestamps: false
+
+iptv:
+  username: CourtneY
+  password: 9195221170
+  server: http://greencube.pro:8080
+
+vaadin:
+  servlet:
+    productionMode: false

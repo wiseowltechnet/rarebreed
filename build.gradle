@@ -1,0 +1,31 @@
+plugins {
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("io.micronaut.application") version "4.2.1"
+}
+
+version = "0.1"
+group = "com.rarebreed"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("io.micronaut:micronaut-http-server-netty")
+    implementation("io.micronaut:micronaut-jackson-databind")
+    implementation("com.vaadin:vaadin-core:24.2.5")
+    implementation("com.vaadin:vaadin-spring-boot-starter:24.2.5")
+    implementation("uk.co.caprica:vlcj:4.8.2")
+    implementation("io.micronaut.views:micronaut-views-core")
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+}
+
+application {
+    mainClass.set("com.rarebreed.Application")
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
