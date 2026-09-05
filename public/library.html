@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RareBreed - My Library</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: #fff;
+        min-height: 100vh;
+        padding: 20px;
+      }
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+      h1 {
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 8px;
+        background: linear-gradient(45deg, #4ecdc4, #44a08d);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .subtitle {
+        text-align: center;
+        opacity: 0.7;
+        margin-bottom: 24px;
+      }
+      .nav {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .nav a {
+        color: #4ecdc4;
+        text-decoration: none;
+        font-weight: 600;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid rgba(78, 205, 196, 0.4);
+      }
+      .nav a:hover {
+        background: rgba(78, 205, 196, 0.15);
+      }
+      .panel {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 24px;
+        backdrop-filter: blur(12px);
+      }
+      .empty {
+        text-align: center;
+        padding: 60px 20px;
+        opacity: 0.6;
+      }
+      .video-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        transition: background 0.2s;
+      }
+      .video-card:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .video-info {
+        flex: 1;
+      }
+      .video-name {
+        font-weight: 600;
+        font-size: 1.05em;
+        margin-bottom: 4px;
+      }
+      .video-meta {
+        font-size: 0.85em;
+        opacity: 0.6;
+      }
+      .btn {
+        padding: 8px 14px;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s;
+        color: #fff;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+      .btn-play {
+        background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      }
+      .btn-export {
+        background: linear-gradient(45deg, #f39c12, #e67e22);
+      }
+      .btn-export-mp4 {
+        background: linear-gradient(45deg, #9b59b6, #8e44ad);
+      }
+      .stats {
+        text-align: center;
+        padding: 12px;
+        margin-bottom: 16px;
+        font-size: 0.9em;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>My Library</h1>
+      <p class="subtitle">Saved videos — available offline</p>
+      <div class="nav">
+        <a href="/">Back to Player</a>
+      </div>
+
+      <div class="stats" id="stats">Loading library...</div>
+
+      <div class="panel" id="library">
+        <div class="empty">Loading...</div>
+      </div>
+    </div>
+
+    <script>
+      async function loadLibrary() {
+        // In Electron: use IPC to get saved videos from disk cache
+        if (window.electronAPI) {
+          const saved = await window.electronAPI.getSavedVideos();
+          renderLibrary(saved);
+        } else {
+          // In browser mode: call the REST endpoint
+          try {
+            const res = await fetch("/api/library");
+            const saved = await res.json();
+            renderLibrary(saved);
+          } catch {
+            document.getElementById("library").innerHTML =
+              '<div class="empty">Library requires the desktop app or /api/library endpoint</div>';
+            document.getElementById("stats").textContent = "";
+          }
+        }
+      }
+
+      function renderLibrary(videos) {
+        const el = document.getElementById("library");
+        const stats = document.getElementById("stats");
+
+        if (!videos || videos.length === 0) {
+          el.innerHTML =
+            '<div class="empty">No saved videos yet.<br>Play a video and click "Save for Later" to add it here.</div>';
+          stats.textContent = "0 saved videos";
+          return;
+        }
+
+        const totalSizeMB = videos.reduce((sum, v) => sum + (v.size || 0), 0) / (1024 * 1024);
+        stats.textContent =
+          videos.length + " saved videos — " + Math.round(totalSizeMB) + " MB on disk";
+
+        let html = "";
+        for (const video of videos) {
+          const sizeMB = Math.round((video.size || 0) / (1024 * 1024));
+          const date = video.createdAt ? new Date(video.createdAt).toLocaleDateString() : "";
+          const name = video.name || video.url.split("/").pop() || "Unknown";
+
+          html += '<div class="video-card">';
+          html += '  <div class="video-info">';
+          html += '    <div class="video-name">' + escapeHtml(name) + "</div>";
+          html += '    <div class="video-meta">' + sizeMB + " MB — saved " + date + "</div>";
+          html += "  </div>";
+          html +=
+            '  <button class="btn btn-play" onclick="playVideo(\'' +
+            escapeAttr(video.url) +
+            "')\">Play</button>";
+          html +=
+            '  <button class="btn btn-export" onclick="exportOriginal(\'' +
+            escapeAttr(video.url) +
+            "')\">Export</button>";
+          html +=
+            '  <button class="btn btn-export-mp4" onclick="exportMp4(\'' +
+            escapeAttr(video.url) +
+            "')\">MP4</button>";
+          html += "</div>";
+        }
+        el.innerHTML = html;
+      }
+
+      function playVideo(url) {
+        if (window.electronAPI) {
+          window.electronAPI.playVideo(url);
+        } else {
+          // Browser fallback: open in new tab via stream proxy
+          window.open("/stream?url=" + encodeURIComponent(url), "_blank");
+        }
+      }
+
+      async function exportOriginal(url) {
+        if (window.electronAPI) {
+          const folder = await window.electronAPI.pickFolder();
+          if (folder.canceled) return;
+          const result = await window.electronAPI.exportVideo(url, folder.path, "original");
+          if (result.status === "done") alert("Exported to: " + result.outputPath);
+          else alert("Export failed: " + result.message);
+        } else {
+          // Server mode: export to EXPORT_DIR on server
+          const res = await fetch("/api/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, format: "original" }),
+          });
+          const result = await res.json();
+          if (result.status === "done") alert("Exported to: " + result.outputPath);
+          else alert("Export failed: " + (result.error || "unknown"));
+        }
+      }
+
+      async function exportMp4(url) {
+        if (window.electronAPI) {
+          const folder = await window.electronAPI.pickFolder();
+          if (folder.canceled) return;
+          alert("Transcoding to MP4... This may take a few minutes.");
+          const result = await window.electronAPI.exportVideo(url, folder.path, "mp4");
+          if (result.status === "done") alert("Exported MP4 to: " + result.outputPath);
+          else alert("Export failed: " + result.message);
+        } else {
+          // Server mode: export via REST API
+          alert("Transcoding to MP4 on server... This may take a few minutes.");
+          const res = await fetch("/api/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, format: "mp4" }),
+          });
+          const result = await res.json();
+          if (result.status === "done") alert("Exported MP4 to: " + result.outputPath);
+          else alert("Export failed: " + (result.error || "unknown"));
+        }
+      }
+
+      function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      function escapeAttr(str) {
+        return str.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+      }
+
+      // Load on page ready
+      loadLibrary();
+    </script>
+  </body>
+</html>

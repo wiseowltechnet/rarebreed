@@ -1,0 +1,93 @@
+/* Wise Owl Entertainment — Global Styles + Theme System */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Dark Theme (default) ─── */
+:root,
+[data-theme="dark"] {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --surface-raised: #1a1a24;
+  --surface-hover: #22222e;
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #eaeaea;
+  --text-secondary: #a0a0a0;
+  --text-muted: #606060;
+  --accent: #f5af19;
+  --accent-hover: #f7c148;
+  --accent-subtle: rgba(245, 175, 25, 0.1);
+  --accent-gradient: linear-gradient(135deg, #f5af19, #f12711);
+  --danger: #ff6b6b;
+  --success: #2ecc71;
+  --info: #3498db;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --nav-bg: rgba(10, 10, 15, 0.95);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --card-bg: rgba(255, 255, 255, 0.03);
+}
+
+/* ─── Light Theme ─── */
+[data-theme="light"] {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-hover: #f0f0f2;
+  --border: rgba(0, 0, 0, 0.1);
+  --text-primary: #1a1a1a;
+  --text-secondary: #555555;
+  --text-muted: #999999;
+  --accent: #e67e22;
+  --accent-hover: #d35400;
+  --accent-subtle: rgba(230, 126, 34, 0.08);
+  --accent-gradient: linear-gradient(135deg, #e67e22, #c0392b);
+  --danger: #e74c3c;
+  --success: #27ae60;
+  --info: #2980b9;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --nav-bg: rgba(255, 255, 255, 0.97);
+  --input-bg: rgba(0, 0, 0, 0.03);
+  --card-bg: rgba(0, 0, 0, 0.02);
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
+
+  &:hover {
+    background: var(--text-secondary);
+  }
+}
+
+/* ─── Utility classes ─── */
+.accent-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

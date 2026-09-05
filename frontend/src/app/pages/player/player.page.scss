@@ -1,0 +1,884 @@
+.player-layout {
+  padding: 16px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 70px; // space for now-playing bar
+}
+
+/* ─── Breadcrumbs + Toggle ─── */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 14px;
+
+  .breadcrumb-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  .breadcrumb-item {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    &:hover { color: var(--accent); background: var(--accent-subtle); }
+    &.active { color: var(--text-primary); font-weight: 600; cursor: default; &:hover { background: none; } }
+  }
+  .breadcrumb-sep { color: var(--text-muted); }
+  .breadcrumb-count { margin-left: 8px; color: var(--text-muted); font-size: 12px; }
+}
+
+/* C3: View toggle */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+
+  button {
+    width: 32px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+
+    svg { width: 14px; height: 14px; }
+    &.active { background: var(--accent-subtle); color: var(--accent); }
+    &:hover:not(.active) { color: var(--text-primary); }
+  }
+}
+
+/* ─── B2: Collapsible Player ─── */
+.player-section {
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+
+  .player-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+
+    .now-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); font-weight: 600; }
+    .btn-minimize { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 4px; &:hover { color: var(--text-primary); background: var(--surface-hover); } }
+  }
+
+  .video-player {
+    width: 100%;
+    max-height: 380px;
+    display: block;
+    background: #000;
+  }
+
+  .player-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+
+    .status { font-size: 12px; color: var(--text-secondary); }
+    .btn-save {
+      padding: 5px 12px; border: none; border-radius: 6px; background: var(--success); color: white; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+  }
+
+  &.minimized {
+    .video-player { display: none; }
+  }
+}
+
+/* ─── Search ─── */
+.search-section {
+  margin-bottom: 12px;
+  .input-search {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--input-bg); color: var(--text-primary); font-size: 13px; outline: none;
+    &:focus { border-color: var(--accent); }
+    &::placeholder { color: var(--text-muted); }
+  }
+}
+
+/* ─── D3: Home Sections ─── */
+.home-section {
+  margin-bottom: 28px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.horizontal-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+}
+
+.mini-card {
+  flex-shrink: 0;
+  width: 100px;
+  cursor: pointer;
+  text-align: center;
+
+  .mini-poster {
+    width: 100px;
+    height: 60px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 6px;
+    transition: transform 0.2s;
+  }
+
+  .mini-name {
+    font-size: 10px;
+    color: var(--text-secondary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &:hover .mini-poster { transform: scale(1.05); }
+}
+
+/* ─── Type Cards ─── */
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.type-card {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 48px 24px; border: none; border-radius: 16px;
+  cursor: pointer; transition: all 0.25s; position: relative; overflow: hidden;
+
+  // Each card gets a unique gradient
+  &:nth-child(1) { background: linear-gradient(135deg, #1a237e, #283593, #1565c0); }
+  &:nth-child(2) { background: linear-gradient(135deg, #4a148c, #6a1b9a, #8e24aa); }
+  &:nth-child(3) { background: linear-gradient(135deg, #b71c1c, #c62828, #e65100); }
+
+  &:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+
+  .type-icon { font-size: 3.5rem; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
+  .type-name { font-size: 18px; font-weight: 700; color: white; letter-spacing: 0.3px; }
+  .type-count { font-size: 13px; color: rgba(255,255,255,0.7); }
+}
+
+/* ─── Category Cards ─── */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.category-card {
+  padding: 16px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card-bg); cursor: pointer; text-align: left; transition: all 0.2s;
+  &:hover { border-color: var(--accent); background: var(--accent-subtle); }
+  .cat-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+}
+
+/* ─── Channel Grid (poster cards) ─── */
+.channel-list { max-height: 600px; overflow-y: auto; }
+
+.channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  padding: 4px;
+}
+
+.channel-card {
+  display: flex; flex-direction: column; border-radius: 10px; overflow: hidden;
+  cursor: pointer; background: var(--card-bg); border: 1px solid var(--border); transition: all 0.2s;
+
+  &:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+  &.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+  .channel-poster {
+    width: 100%; aspect-ratio: 2/3; object-fit: cover; background: var(--surface); display: block;
+  }
+
+  .channel-name {
+    padding: 8px 10px; font-size: 11px; font-weight: 500; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+}
+
+.episode-card .channel-poster { aspect-ratio: 16/9; }
+
+/* A1: Gradient placeholder with full name */
+.gradient-bg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  background: linear-gradient(135deg, hsl(var(--hue, 200), 60%, 25%), hsl(calc(var(--hue, 200) + 40), 50%, 15%));
+  text-align: center;
+
+  .gradient-text {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.gradient-bg-sm {
+  width: 40px; height: 40px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, hsl(var(--hue, 200), 60%, 30%), hsl(calc(var(--hue, 200) + 40), 50%, 20%));
+  color: white; font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+
+/* ─── Channel List View ─── */
+.channel-list-view {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.channel-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px; cursor: pointer; border-left: 3px solid transparent; transition: background 0.15s;
+
+  &:hover { background: var(--surface-hover); }
+  &.active { background: var(--accent-subtle); border-left-color: var(--accent); .row-name { color: var(--accent); } }
+  &:not(:last-child) { border-bottom: 1px solid var(--border); }
+
+  .row-thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+  .row-name { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ─── Seasons ─── */
+.season-group {
+  margin-top: 20px;
+  .season-header { padding: 8px 4px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0 0 8px; }
+}
+
+/* ─── E3: Skeleton Loading ─── */
+.skeleton {
+  pointer-events: none;
+}
+
+.skeleton-pulse {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: pulse 1.5s infinite;
+  border-radius: 6px;
+}
+
+.poster-skeleton { width: 100%; aspect-ratio: 2/3; }
+.name-skeleton { height: 14px; margin: 8px 10px; width: 70%; }
+
+@keyframes pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── E1: Now Playing Bar ─── */
+.now-playing-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--nav-bg);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  cursor: pointer;
+  z-index: 100;
+  transition: background 0.2s;
+
+  &:hover { background: var(--surface-hover); }
+
+  .npb-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .npb-icon { color: var(--accent); font-size: 14px; }
+    .npb-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+  }
+
+  .npb-status { font-size: 11px; color: var(--text-muted); }
+}
+
+/* ─── Shared ─── */
+.loading, .empty, .error {
+  text-align: center; padding: 40px 20px; font-size: 13px; color: var(--text-muted);
+}
+.error { color: var(--danger); }
+
+/* ─── Follow Button ─── */
+.breadcrumb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-follow {
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover { background: var(--accent-subtle); }
+  &.following { background: var(--accent); color: #000; }
+}
+
+/* ─── Control Buttons (save + sleep) ─── */
+.control-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sleep-wrapper {
+  position: relative;
+}
+
+.btn-sleep {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  &:hover { border-color: var(--accent); color: var(--accent); }
+}
+
+.sleep-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 4px;
+    &:hover { background: var(--surface-hover); }
+  }
+}
+
+/* ─── Progress bar on episode cards ─── */
+.progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.1);
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    transition: width 0.3s;
+  }
+}
+
+.watched-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--success);
+  color: white;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+/* ─── AI Button + Description ─── */
+.btn-ai {
+  padding: 5px 12px;
+  border: 1px solid #8b5cf6;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) { background: rgba(139, 92, 246, 0.2); }
+  &:disabled { opacity: 0.5; cursor: wait; }
+}
+
+.ai-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  margin-top: 8px;
+  animation: fadeIn 0.3s ease;
+
+  .ai-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a78bfa;
+    white-space: nowrap;
+  }
+
+  .ai-text {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    flex: 1;
+  }
+
+  .ai-dismiss {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    &:hover { color: var(--text-primary); }
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Favorites ─── */
+.favorites-section {
+  margin-bottom: 16px;
+}
+
+.favorites-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+}
+
+.fav-card {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover { border-color: var(--accent); transform: translateY(-1px); }
+}
+
+.fav-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+
+  &.live { background: #ef4444; color: #fff; }
+  &.series { background: #8b5cf6; color: #fff; }
+  &.movie { background: #f59e0b; color: #000; }
+}
+
+.fav-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* Favorite heart button (grid cards) */
+.btn-fav {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+
+  .channel-card:hover & { opacity: 1; }
+  &.is-fav { opacity: 1; }
+}
+
+/* Favorite heart button (list rows) */
+.btn-fav-sm {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+
+  &:hover { opacity: 1; }
+  &.is-fav { opacity: 1; }
+}
+
+/* Ensure channel-card is relative for absolute heart positioning */
+.channel-card {
+  position: relative;
+}
+
+/* ─── AI Closed Captions ─── */
+.video-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.btn-cc {
+  padding: 4px 10px;
+  border: 2px solid #666;
+  border-radius: 4px;
+  background: transparent;
+  color: #999;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover { border-color: #fff; color: #fff; }
+  &.active {
+    border-color: #fff;
+    background: #fff;
+    color: #000;
+  }
+}
+
+.caption-overlay {
+  position: absolute;
+  bottom: 50px; // above video controls
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
+  animation: captionFade 0.5s ease;
+}
+
+.caption-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+@keyframes captionFade {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* CC generating indicator */
+.caption-generating {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.caption-overlay.generating {
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
+}
+
+/* ─── Recommendations ─── */
+.recs-section {
+  margin-bottom: 16px;
+}
+
+.recs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.rec-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s, border-color 0.2s;
+
+  &:hover { transform: translateY(-2px); border-color: var(--accent); }
+}
+
+.rec-poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+}
+
+.rec-info {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rec-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rec-rating {
+  font-size: 11px;
+  color: #f59e0b;
+}
+
+.rec-reason {
+  font-size: 10px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Theme toggle + Settings gear ─── */
+.btn-theme, .btn-gear {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  opacity: 0.7;
+
+  &:hover { opacity: 1; background: var(--surface-hover); }
+}
+
+/* ─── Enhanced Now-Playing Bar ─── */
+.now-playing-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.npb-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.npb-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.npb-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.npb-icon {
+  font-size: 14px;
+}
+
+.npb-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.npb-live-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #ef4444;
+  color: #fff;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.npb-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.npb-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.npb-expand {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+
+  &:hover { color: var(--text-primary); }
+}
+
+/* ─── Episode Progress Bars ─── */
+.ep-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+
+.ep-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0 0 8px 8px;
+  transition: width 0.3s;
+}
+
+.episode-card.watched {
+  opacity: 0.6;
+}
+
+.ep-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--success);
+  color: #fff;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Add bottom padding for the fixed now-playing bar */
+.player-layout {
+  padding-bottom: 56px;
+}
+
+/* ─── Cast Button ─── */
+.btn-cast {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover { border-color: var(--accent); color: var(--accent); }
+}

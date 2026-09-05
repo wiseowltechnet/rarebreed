@@ -1,0 +1,427 @@
+<div class="player-layout">
+  <!-- Breadcrumbs + View Toggle -->
+  <nav class="breadcrumbs">
+    <div class="breadcrumb-path">
+      <button class="breadcrumb-item" (click)="channels.clearAll()">Home</button>
+      @if (channels.selectedType()) {
+        <span class="breadcrumb-sep">›</span>
+        <button class="breadcrumb-item" (click)="channels.clearCategory()">
+          {{ channels.selectedType()!.icon }} {{ channels.selectedType()!.name }}
+        </button>
+      }
+      @if (channels.selectedCategory()) {
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-item active">{{ channels.selectedCategory()!.name }}</span>
+      }
+      @if (channels.channelCount()) {
+        <span class="breadcrumb-count">{{ channels.filteredChannels().length }} items</span>
+      }
+    </div>
+    <!-- Follow button + View toggle -->
+    <div class="breadcrumb-actions">
+      <!-- Theme toggle + Settings gear -->
+      <button class="btn-theme" (click)="settings.toggleTheme()" title="Toggle dark/light theme">
+        {{ settings.theme() === 'dark' ? '☀️' : '🌙' }}
+      </button>
+      <button class="btn-gear" (click)="settings.toggle()" title="Settings">⚙️</button>
+      @if (channels.selectedType()?.id === 'series' && channels.selectedCategory()) {
+        <button
+          class="btn-follow"
+          (click)="toggleFollow()"
+          [class.following]="follow.isFollowed(channels.channels()[0]?.id ?? 0)"
+        >
+          {{ follow.isFollowed(channels.channels()[0]?.id ?? 0) ? '★ Following' : '☆ Follow' }}
+        </button>
+      }
+      <!-- C3: List/Grid toggle -->
+      @if (channels.selectedCategory()) {
+        <div class="view-toggle">
+          <button
+            [class.active]="viewMode() === 'grid'"
+            (click)="viewMode.set('grid')"
+            title="Grid view"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </button>
+          <button
+            [class.active]="viewMode() === 'list'"
+            (click)="viewMode.set('list')"
+            title="List view"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="3" y="4" width="18" height="3" />
+              <rect x="3" y="11" width="18" height="3" />
+              <rect x="3" y="18" width="18" height="3" />
+            </svg>
+          </button>
+        </div>
+      }
+    </div>
+  </nav>
+
+  <!-- B2: Collapsible Player (only shows when playing) -->
+  @if (player.currentChannel()) {
+    <section class="player-section" [class.minimized]="playerMinimized()">
+      <div class="player-header">
+        <span class="now-label">Now Playing</span>
+        <button class="btn-minimize" (click)="playerMinimized.update((v) => !v)">
+          {{ playerMinimized() ? '▲' : '▼' }}
+        </button>
+      </div>
+      @if (!playerMinimized()) {
+        <div class="video-wrapper">
+          <video #videoElement controls class="video-player" x-webkit-airplay="allow"></video>
+          <!-- AI Caption overlay (like TV closed captions) -->
+          @if (ai.captionsEnabled() && ai.caption()) {
+            <div class="caption-overlay" [class.generating]="ai.captionGenerating()">
+              <span class="caption-text">{{ ai.caption() }}</span>
+              @if (ai.captionGenerating()) {
+                <span class="caption-generating">⟳</span>
+              }
+            </div>
+          }
+        </div>
+      }
+      <div class="player-controls">
+        <span class="status">{{ player.status() }}</span>
+        <div class="control-buttons">
+          <!-- AI: What's happening? -->
+          @if (ai.available() && ai.hasVision()) {
+            <button class="btn-ai" (click)="describeFrame()" [disabled]="ai.isProcessing()">
+              {{ ai.isProcessing() ? '🤖 Analyzing...' : "🤖 What's this?" }}
+            </button>
+            <button
+              class="btn-cc"
+              [class.active]="ai.captionsEnabled()"
+              (click)="ai.toggleCaptions(videoRef.nativeElement)"
+            >
+              CC
+            </button>
+          }
+          <!-- Sleep timer -->
+          @if (player.contentType() === 'series') {
+            <div class="sleep-wrapper">
+              <button class="btn-sleep" (click)="showSleepMenu.update((v) => !v)">
+                😴
+                {{
+                  player.sleepEpisodes() > 0
+                    ? player.sleepEpisodes() + ' eps'
+                    : player.sleepMinutes() > 0
+                      ? player.sleepMinutes() + 'min'
+                      : 'Sleep'
+                }}
+              </button>
+              @if (showSleepMenu()) {
+                <div class="sleep-menu">
+                  <button (click)="setSleep('episodes', 2)">2 episodes</button>
+                  <button (click)="setSleep('episodes', 5)">5 episodes</button>
+                  <button (click)="setSleep('minutes', 30)">30 min</button>
+                  <button (click)="setSleep('minutes', 60)">60 min</button>
+                  <button (click)="player.cancelSleep(); showSleepMenu.set(false)">
+                    Cancel timer
+                  </button>
+                </div>
+              }
+            </div>
+          }
+          @if (player.canSave()) {
+            <button (click)="saveForLater()" class="btn-save">💾 Save</button>
+          }
+          <!-- AirPlay / Cast button -->
+          <button class="btn-cast" (click)="castToAirPlay()" title="Cast to AirPlay / Chromecast">
+            📺 Cast
+          </button>
+        </div>
+      </div>
+      <!-- AI Description overlay -->
+      @if (ai.description()) {
+        <div class="ai-description">
+          <span class="ai-label">🤖 AI:</span>
+          <span class="ai-text">{{ ai.description() }}</span>
+          <button class="ai-dismiss" (click)="ai.description.set('')">✕</button>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Search -->
+  @if (channels.selectedCategory()) {
+    <section class="search-section">
+      <input
+        type="text"
+        [ngModel]="channels.searchTerm()"
+        (ngModelChange)="channels.searchTerm.set($event)"
+        placeholder="Search in {{ channels.selectedCategory()!.name }}..."
+        class="input-search"
+      />
+    </section>
+  }
+
+  <!-- Content Area -->
+  <section class="content-area">
+    <!-- D3: Home — Favorites + Recent + Content Types -->
+    @if (!channels.selectedType()) {
+      <!-- Recent section -->
+      @if (recentChannels().length > 0) {
+        <div class="home-section">
+          <h2 class="section-title">⏱ Recently Played</h2>
+          <div class="horizontal-scroll">
+            @for (ch of recentChannels(); track ch.url) {
+              <div class="mini-card" (click)="playChannel(ch)">
+                <div class="mini-poster gradient-bg">{{ ch.name.substring(0, 3) }}</div>
+                <span class="mini-name">{{ ch.name }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Favorites Quick Access -->
+      @if (favorites.count() > 0) {
+        <div class="home-section favorites-section">
+          <h2 class="section-title">❤️ Favorites</h2>
+          <div class="favorites-row">
+            @for (fav of favorites.live(); track fav.id) {
+              <div class="fav-card" (click)="playChannel({ name: fav.name, url: fav.url || '' })">
+                <span class="fav-badge live">LIVE</span>
+                <span class="fav-name">{{ fav.name }}</span>
+              </div>
+            }
+            @for (fav of favorites.series(); track fav.id) {
+              <div class="fav-card">
+                <span class="fav-badge series">SERIES</span>
+                <span class="fav-name">{{ fav.name }}</span>
+              </div>
+            }
+            @for (fav of favorites.movies(); track fav.id) {
+              <div class="fav-card" (click)="playChannel({ name: fav.name, url: fav.url || '' })">
+                <span class="fav-badge movie">MOVIE</span>
+                <span class="fav-name">{{ fav.name }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Recommended For You -->
+      @if (recs.hasRecs()) {
+        <div class="home-section recs-section">
+          <h2 class="section-title">🎯 Recommended For You</h2>
+          <div class="recs-grid">
+            @for (rec of recs.top(); track rec.id) {
+              <div class="rec-card">
+                @if (rec.poster) {
+                  <img [src]="rec.poster" [alt]="rec.title" class="rec-poster" loading="lazy" />
+                } @else {
+                  <div class="rec-poster gradient-bg" [style.--hue]="getHue(rec.title)">
+                    <span class="gradient-text">{{ rec.title }}</span>
+                  </div>
+                }
+                <div class="rec-info">
+                  <span class="rec-title">{{ rec.title }}</span>
+                  <span class="rec-rating">⭐ {{ rec.rating.toFixed(1) }}</span>
+                  <span class="rec-reason">{{ rec.reason }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Content Type Cards -->
+      <div class="home-section">
+        <h2 class="section-title">Browse</h2>
+        <div class="type-grid">
+          @if (channels.isLoadingTree()) {
+            <!-- E3: Skeleton loading -->
+            @for (i of [1, 2, 3]; track i) {
+              <div class="type-card skeleton"><div class="skeleton-pulse"></div></div>
+            }
+          }
+          @for (type of channels.tree(); track type.id) {
+            <button class="type-card" (click)="channels.selectType(type)">
+              <span class="type-icon">{{ type.icon }}</span>
+              <span class="type-name">{{ type.name }}</span>
+              <span class="type-count">{{ type.categories.length }} categories</span>
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Level 2: Categories -->
+    @if (channels.selectedType() && !channels.selectedCategory()) {
+      <div class="category-grid">
+        @for (cat of channels.selectedType()!.categories; track cat.id) {
+          <button class="category-card" (click)="onCategoryClick(cat)">
+            <span class="cat-name">{{ cat.name }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Level 3: Channels (Grid or List view) -->
+    @if (channels.selectedCategory()) {
+      <div class="channel-list">
+        @if (channels.isLoadingChannels()) {
+          <!-- E3: Skeleton loading cards -->
+          <div class="channel-grid">
+            @for (i of [1, 2, 3, 4, 5, 6, 7, 8]; track i) {
+              <div class="channel-card skeleton">
+                <div class="skeleton-pulse poster-skeleton"></div>
+                <div class="skeleton-pulse name-skeleton"></div>
+              </div>
+            }
+          </div>
+        }
+
+        @if (channels.error()) {
+          <div class="error">{{ channels.error() }}</div>
+        }
+
+        <!-- Grid View -->
+        @if (viewMode() === 'grid') {
+          <div class="channel-grid">
+            @for (channel of channels.filteredChannels(); track channel.id) {
+              <div
+                class="channel-card"
+                [class.active]="player.currentChannel()?.url === channel.url"
+                (click)="onChannelClick(channel)"
+              >
+                <button
+                  class="btn-fav"
+                  [class.is-fav]="isFav(channel)"
+                  (click)="toggleFavorite(channel); $event.stopPropagation()"
+                >
+                  {{ isFav(channel) ? '❤️' : '🤍' }}
+                </button>
+                @if (channel.icon) {
+                  <img
+                    [src]="channel.icon"
+                    [alt]="channel.name"
+                    class="channel-poster"
+                    loading="lazy"
+                    (error)="onImgError($event)"
+                  />
+                } @else {
+                  <!-- A1: Gradient placeholder with full name -->
+                  <div class="channel-poster gradient-bg" [style.--hue]="getHue(channel.name)">
+                    <span class="gradient-text">{{ channel.name }}</span>
+                  </div>
+                }
+                <span class="channel-name">{{ channel.name }}</span>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- List View -->
+        @if (viewMode() === 'list') {
+          <div class="channel-list-view">
+            @for (channel of channels.filteredChannels(); track channel.id) {
+              <div
+                class="channel-row"
+                [class.active]="player.currentChannel()?.url === channel.url"
+                (click)="onChannelClick(channel)"
+              >
+                @if (channel.icon) {
+                  <img
+                    [src]="channel.icon"
+                    [alt]="channel.name"
+                    class="row-thumb"
+                    loading="lazy"
+                    (error)="onImgError($event)"
+                  />
+                } @else {
+                  <div class="row-thumb gradient-bg-sm" [style.--hue]="getHue(channel.name)">
+                    {{ channel.name.substring(0, 2) }}
+                  </div>
+                }
+                <span class="row-name">{{ channel.name }}</span>
+                <button
+                  class="btn-fav-sm"
+                  [class.is-fav]="isFav(channel)"
+                  (click)="toggleFavorite(channel); $event.stopPropagation()"
+                >
+                  {{ isFav(channel) ? '❤️' : '🤍' }}
+                </button>
+              </div>
+            }
+          </div>
+        }
+
+        @if (
+          !channels.isLoadingChannels() &&
+          channels.filteredChannels().length === 0 &&
+          !channels.error()
+        ) {
+          <div class="empty">No channels in this category</div>
+        }
+
+        <!-- Series seasons -->
+        @if (channels.seasons().length > 0) {
+          @for (season of channels.seasons(); track season.season) {
+            <div class="season-group">
+              <h3 class="season-header">Season {{ season.season }}</h3>
+              <div class="channel-grid">
+                @for (ep of season.episodes; track ep.id) {
+                  <div
+                    class="channel-card episode-card"
+                    [class.active]="player.currentChannel()?.url === ep.url"
+                    [class.watched]="watchHistory.isCompleted(ep.url)"
+                    (click)="playChannel(ep)"
+                  >
+                    <div class="channel-poster gradient-bg episode" [style.--hue]="getHue(ep.name)">
+                      <span class="gradient-text">{{ ep.name }}</span>
+                      @if (watchHistory.isCompleted(ep.url)) {
+                        <span class="ep-check">✓</span>
+                      }
+                    </div>
+                    <span class="channel-name">{{ ep.name }}</span>
+                    @if (
+                      watchHistory.getProgress(ep.url) > 0 && !watchHistory.isCompleted(ep.url)
+                    ) {
+                      <div class="ep-progress-bar">
+                        <div
+                          class="ep-progress-fill"
+                          [style.width.%]="watchHistory.getProgress(ep.url)"
+                        ></div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    }
+  </section>
+</div>
+
+<!-- E1: Now Playing bar (Spotify-style, fixed bottom — always visible when playing) -->
+@if (player.currentChannel()) {
+  <div class="now-playing-bar" (click)="playerMinimized() ? playerMinimized.set(false) : null">
+    <div class="npb-progress" [style.width.%]="player.contentType() === 'live' ? 100 : 0"></div>
+    <div class="npb-content">
+      <div class="npb-info">
+        <span class="npb-icon">{{ player.isTranscoding() ? '⏳' : '▶' }}</span>
+        <span class="npb-name">{{ player.currentChannel()!.name }}</span>
+        @if (player.contentType() === 'live') {
+          <span class="npb-live-badge">LIVE</span>
+        }
+      </div>
+      <div class="npb-controls">
+        <span class="npb-status">{{ player.status() }}</span>
+        @if (playerMinimized()) {
+          <button class="npb-expand" title="Expand player">▲</button>
+        }
+      </div>
+    </div>
+  </div>
+}

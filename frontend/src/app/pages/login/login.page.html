@@ -1,0 +1,45 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo">🦉</div>
+    <h1>Wise Owl Entertainment</h1>
+    <p class="subtitle">Your Personal Streaming Hub</p>
+
+    <form (ngSubmit)="onSubmit()">
+      <div class="form-group">
+        <input
+          type="text"
+          placeholder="Username"
+          [ngModel]="username()"
+          (ngModelChange)="username.set($event)"
+          name="username"
+          required
+          autocomplete="username"
+        />
+      </div>
+
+      <div class="form-group">
+        <input
+          type="password"
+          placeholder="Password"
+          [ngModel]="password()"
+          (ngModelChange)="password.set($event)"
+          name="password"
+          required
+          autocomplete="current-password"
+        />
+      </div>
+
+      <button type="submit" [disabled]="isSubmitting()" class="btn-login">
+        @if (isSubmitting()) {
+          Logging in...
+        } @else {
+          Sign In
+        }
+      </button>
+
+      @if (auth.error()) {
+        <div class="error">{{ auth.error() }}</div>
+      }
+    </form>
+  </div>
+</div>

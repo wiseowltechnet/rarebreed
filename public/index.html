@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RareBreed Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: #fff;
+        min-height: 100vh;
+        padding: 20px;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      h1 {
+        text-align: center;
+        font-size: 2.5em;
+        margin-bottom: 8px;
+        background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .subtitle {
+        text-align: center;
+        opacity: 0.8;
+        margin-bottom: 24px;
+      }
+      .panel {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+        backdrop-filter: blur(12px);
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .controls input,
+      .controls select {
+        flex: 1;
+        min-width: 200px;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        background: rgba(255, 255, 255, 0.9);
+        color: #333;
+      }
+      .controls button,
+      .btn {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+        color: #fff;
+        transition: transform 0.2s;
+      }
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+      .btn-play {
+        background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      }
+      video {
+        width: 100%;
+        border-radius: 12px;
+        background: #000;
+        max-height: 500px;
+      }
+      .channel-list {
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 12px;
+      }
+      .channel-item {
+        padding: 10px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.2s;
+        display: flex;
+        justify-content: space-between;
+      }
+      .channel-item:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .channel-item.active {
+        background: rgba(78, 205, 196, 0.3);
+      }
+      .group-header {
+        font-weight: 700;
+        opacity: 0.7;
+        padding: 8px 14px;
+        font-size: 0.85em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>RareBreed Player</h1>
+      <p class="subtitle">Premium IPTV Streaming</p>
+      <p style="text-align: center; margin-bottom: 16px">
+        <a
+          href="/library"
+          style="
+            color: #4ecdc4;
+            text-decoration: none;
+            font-weight: 600;
+            border: 1px solid rgba(78, 205, 196, 0.4);
+            padding: 6px 14px;
+            border-radius: 6px;
+          "
+        >
+          My Library
+        </a>
+      </p>
+
+      <div class="panel">
+        <div class="controls">
+          <input type="text" id="playlistUrl" placeholder="Enter M3U playlist URL..." value="" />
+          <button class="btn" onclick="loadPlaylist()">Load Playlist</button>
+        </div>
+
+        <video id="player" controls></video>
+
+        <div class="controls" style="margin-top: 12px">
+          <input
+            type="text"
+            id="searchBox"
+            placeholder="Search channels..."
+            oninput="filterChannels()"
+          />
+        </div>
+
+        <div id="status" style="padding: 8px; opacity: 0.7"></div>
+        <button
+          class="btn"
+          onclick="saveForLater()"
+          style="margin: 8px 0; background: linear-gradient(45deg, #4ecdc4, #44a08d)"
+        >
+          Save for Later
+        </button>
+        <div id="channelList" class="channel-list"></div>
+      </div>
+    </div>
+
+    <script>
+      let channels = [];
+      let hls = null;
+
+      async function loadPlaylist() {
+        const url = document.getElementById("playlistUrl").value;
+        if (!url) return;
+        document.getElementById("status").textContent = "Loading playlist...";
+
+        try {
+          const res = await fetch("/proxy?url=" + encodeURIComponent(url));
+          const text = await res.text();
+          channels = parseM3U(text);
+          renderChannels(channels);
+          document.getElementById("status").textContent = channels.length + " channels loaded";
+        } catch (e) {
+          document.getElementById("status").textContent = "Error: " + e.message;
+        }
+      }
+
+      function parseM3U(content) {
+        const lines = content.split("\n");
+        const result = [];
+        let name = "",
+          group = "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("#EXTINF:")) {
+            const gm = trimmed.match(/group-title="([^"]*)"/);
+            group = gm ? gm[1] : "Uncategorized";
+            const ci = trimmed.lastIndexOf(",");
+            name = ci !== -1 ? trimmed.substring(ci + 1).trim() : "Unknown";
+          } else if (trimmed && !trimmed.startsWith("#")) {
+            result.push({ name: name || "Channel " + (result.length + 1), url: trimmed, group });
+            name = "";
+            group = "";
+          }
+        }
+        return result;
+      }
+
+      function renderChannels(list) {
+        const el = document.getElementById("channelList");
+        const groups = {};
+        for (const ch of list) {
+          if (!groups[ch.group]) groups[ch.group] = [];
+          groups[ch.group].push(ch);
+        }
+        let html = "";
+        for (const [group, chs] of Object.entries(groups)) {
+          html += '<div class="group-header">' + group + " (" + chs.length + ")</div>";
+          for (const ch of chs) {
+            html +=
+              '<div class="channel-item" onclick="playChannel(\'' +
+              ch.url.replace(/'/g, "\\'") +
+              "')\">" +
+              "<span>" +
+              ch.name +
+              "</span></div>";
+          }
+        }
+        el.innerHTML = html;
+      }
+
+      function playChannel(url) {
+        const video = document.getElementById("player");
+        // Route ALL video through our /stream proxy (enables disk caching + avoids CORS)
+        const proxiedUrl = "/stream?url=" + encodeURIComponent(url);
+
+        // Track for save-for-later
+        currentPlayingUrl = url;
+        currentPlayingName =
+          document.querySelector(".channel-item.active")?.textContent || "Unknown";
+
+        // If running in Electron: use mpv via IPC
+        if (window.electronAPI) {
+          window.electronAPI.playVideo(url);
+          document.getElementById("status").textContent = "Playing in mpv: " + currentPlayingName;
+          return;
+        }
+
+        // Server mode: transcode to HLS for browser playback
+        // Works with ANY format (MKV, AVI, TS, etc.) — ffmpeg converts on the fly
+        document.getElementById("status").textContent = "Starting transcode...";
+
+        fetch("/transcode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.playlist) {
+              // ffmpeg is producing HLS — load it in the browser
+              if (hls) hls.destroy();
+              hls = new Hls();
+              hls.loadSource(data.playlist);
+              hls.attachMedia(video);
+              hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play();
+                document.getElementById("status").textContent = "Playing: " + currentPlayingName;
+              });
+              hls.on(Hls.Events.ERROR, (event, errorData) => {
+                if (errorData.fatal) {
+                  document.getElementById("status").textContent =
+                    "Playback error — trying mpv fallback...";
+                  // Fallback to mpv if transcode fails
+                  fetch("/api/play", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url }),
+                  }).catch(() => {});
+                }
+              });
+            } else {
+              document.getElementById("status").textContent =
+                "Transcode failed: " + (data.error || "unknown");
+            }
+          })
+          .catch((e) => {
+            document.getElementById("status").textContent = "Error: " + e.message;
+          });
+      }
+
+      function filterChannels() {
+        const q = document.getElementById("searchBox").value.toLowerCase();
+        const filtered = channels.filter(
+          (ch) => ch.name.toLowerCase().includes(q) || ch.group.toLowerCase().includes(q),
+        );
+        renderChannels(filtered);
+      }
+
+      // Currently playing URL (for save-for-later)
+      let currentPlayingUrl = "";
+      let currentPlayingName = "";
+
+      function saveForLater() {
+        if (!currentPlayingUrl) {
+          alert("Play something first!");
+          return;
+        }
+        if (window.electronAPI) {
+          window.electronAPI.saveForLater(currentPlayingUrl, currentPlayingName);
+          document.getElementById("status").textContent = "Saved: " + currentPlayingName;
+        } else {
+          // Server mode: call REST API
+          fetch("/api/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: currentPlayingUrl, name: currentPlayingName }),
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.success) {
+                document.getElementById("status").textContent = "Saved: " + currentPlayingName;
+              } else {
+                document.getElementById("status").textContent =
+                  "Save failed: " + (data.error || "unknown");
+              }
+            })
+            .catch((e) => {
+              document.getElementById("status").textContent = "Save error: " + e.message;
+            });
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+RareBreed Player running at http://[::1]:3000
+[14:26:58.335] [32mINFO[39m (16748): [36mServer listening at http://[::1]:3000[39m
+[14:26:58.338] [32mINFO[39m (16748): [36mServer listening at http://127.0.0.1:3000[39m
+[14:27:24.377] [32mINFO[39m (16748): [36mincoming request[39m
+    [35mreqId[39m: "req-1"
+    [35mreq[39m: {
+      "method": "GET",
+      "url": "/health",
+      "host": "127.0.0.1:3000",
+      "remoteAddress": "127.0.0.1",
+      "remotePort": 64304
+    }
+[14:27:24.390] [32mINFO[39m (16748): [36mrequest completed[39m
+    [35mreqId[39m: "req-1"
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 12.142200000002049

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+release/
+cache/
+test-results/
+playwright-report/
+exports/
+
+# Excluded from the mesh repo (not needed to build/run the backend, and they
+# held the old hardcoded admin password): dev tests, legacy deploy scripts,
+# and runtime data cache.
+tests/
+deploy/
+data/

@@ -1,0 +1,77 @@
+<!-- Backdrop -->
+@if (settings.isOpen()) {
+  <div class="backdrop" (click)="settings.toggle()"></div>
+}
+
+<!-- Slide-out panel -->
+<div class="panel" [class.open]="settings.isOpen()">
+  <div class="panel-header">
+    <h2>Settings</h2>
+    <button class="btn-close" (click)="settings.toggle()">✕</button>
+  </div>
+
+  <div class="panel-body">
+    <!-- Theme -->
+    <div class="setting-group">
+      <label class="setting-label">Theme</label>
+      <div class="theme-toggle">
+        <button
+          class="theme-btn"
+          [class.active]="settings.theme() === 'dark'"
+          (click)="settings.theme.set('dark')"
+        >
+          🌙 Dark
+        </button>
+        <button
+          class="theme-btn"
+          [class.active]="settings.theme() === 'light'"
+          (click)="settings.theme.set('light')"
+        >
+          ☀️ Light
+        </button>
+      </div>
+    </div>
+
+    <!-- Playlist URL -->
+    <div class="setting-group">
+      <label class="setting-label">Default Playlist URL</label>
+      <input
+        type="text"
+        class="setting-input"
+        [ngModel]="settings.playlistUrl()"
+        (ngModelChange)="settings.playlistUrl.set($event)"
+        placeholder="M3U playlist URL..."
+      />
+      <span class="setting-hint">Saved automatically — used on next load</span>
+    </div>
+
+    <!-- Auto-load -->
+    <div class="setting-group">
+      <label class="setting-checkbox">
+        <input
+          type="checkbox"
+          [ngModel]="settings.autoLoadPlaylist()"
+          (ngModelChange)="settings.autoLoadPlaylist.set($event)"
+        />
+        <span>Auto-load playlist on startup</span>
+      </label>
+    </div>
+
+    <!-- Volume -->
+    <div class="setting-group">
+      <label class="setting-label">Player Volume: {{ settings.playerVolume() }}%</label>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        class="setting-range"
+        [ngModel]="settings.playerVolume()"
+        (ngModelChange)="settings.playerVolume.set($event)"
+      />
+    </div>
+  </div>
+
+  <div class="panel-footer">
+    <span class="version">Wise Owl Entertainment v0.1.0</span>
+  </div>
+</div>

@@ -1,0 +1,46 @@
+<div class="library-layout">
+  <header class="header">
+    <div class="brand">
+      <span class="logo">🦉</span>
+      <h1>My Library</h1>
+    </div>
+    <a routerLink="/" class="btn-back">← Back to Player</a>
+  </header>
+
+  <section class="library-content">
+    @if (library.savedVideos.isLoading()) {
+      <div class="loading">Loading library...</div>
+    } @else if (library.savedVideos.value().length === 0) {
+      <div class="empty">
+        <div class="empty-icon">📚</div>
+        <h2>No Saved Videos</h2>
+        <p>Play a video and click "Save for Later" to add it here.</p>
+        <a routerLink="/" class="btn-browse">Browse Channels</a>
+      </div>
+    } @else {
+      <div class="stats">{{ library.savedVideos.value().length }} saved videos</div>
+
+      <div class="video-grid">
+        @for (video of library.savedVideos.value(); track video.url) {
+          <div class="video-card">
+            <div class="video-info">
+              <h3 class="video-name">{{ video.name ?? 'Unknown' }}</h3>
+              <span class="video-meta">
+                {{ formatSize(video.size) }} · Saved {{ formatDate(video.createdAt) }}
+              </span>
+            </div>
+            <div class="video-actions">
+              <button (click)="playVideo(video)" class="btn btn-play">▶ Play</button>
+              <button (click)="exportOriginal(video)" class="btn btn-export">Export</button>
+              <button (click)="exportMp4(video)" class="btn btn-mp4">MP4</button>
+            </div>
+          </div>
+        }
+      </div>
+
+      @if (library.exportStatus()) {
+        <div class="export-status">{{ library.exportStatus() }}</div>
+      }
+    }
+  </section>
+</div>
