@@ -53,7 +53,10 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // 2. Fetch from upstream
-      request.log.info({ url, cache: isLive ? "live-passthrough" : "disk-miss" }, "Fetching from upstream");
+      request.log.info(
+        { url, cache: isLive ? "live-passthrough" : "disk-miss" },
+        "Fetching from upstream",
+      );
 
       try {
         // For live streams: no timeout (infinite stream).
@@ -83,9 +86,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         const contentType = upstream.headers.get("content-type") ?? "video/mp2t";
 
         // Convert Web ReadableStream → Node Readable
-        const source = Readable.fromWeb(
-          upstream.body as import("node:stream/web").ReadableStream,
-        );
+        const source = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
 
         // Destination: client (via PassThrough piped to reply)
         const toClient = new PassThrough();
@@ -113,7 +114,12 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
 
           async function reconnect(): Promise<void> {
             try {
-              const streamUrl = url!;
+              // Pre-existing non-null assertion replaced with a real guard --
+              // url is narrowed to `string` by the route handler's early
+              // return above, but that narrowing does not survive across
+              // this nested closure, so a fresh check is needed here too.
+              if (!url) return;
+              const streamUrl = url;
               const retry = await fetch(streamUrl, {
                 headers: { "User-Agent": "RareBreed/1.0" },
               });
@@ -133,7 +139,9 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
                 toClient.write(chunk);
                 resetStallTimer();
               });
-              newSource.on("end", () => { toClient.end(); });
+              newSource.on("end", () => {
+                toClient.end();
+              });
               newSource.on("error", (err) => {
                 request.log.error({ err, url }, "Live stream error after reconnect");
                 toClient.destroy(err);
@@ -171,12 +179,29 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
           // ─── VOD: tee to disk cache while streaming to client ───
           const { stream: toFile } = app.diskCache.createWriteStream(url);
 
+          // Whether the upstream source reached a genuine, natural EOF.
+          // Both the error handler and the client-close handler used to call
+          // commit() unconditionally, exactly like a real completion --
+          // silently persisting whatever partial bytes had arrived as if
+          // they were the whole file. Once committed, every future request
+          // for that URL was a disk-cache HIT against the truncated file
+          // forever, since get() only checks the file's existence, never
+          // its completeness. Confirmed live: an interrupted fetch of a
+          // ~44-minute episode left a 67MB file committed as "done", which
+          // then produced an HLS transcode only ~78 seconds long -- no
+          // amount of retrying playback fixed it, because every retry was
+          // itself a cache hit. Now only a true "end" event commits; every
+          // other exit path discards the partial file so the next request
+          // is a genuine cache miss and retries the fetch from scratch.
+          let reachedEnd = false;
+
           source.on("data", (chunk: Buffer) => {
             toClient.write(chunk);
             toFile.write(chunk);
           });
 
           source.on("end", () => {
+            reachedEnd = true;
             toClient.end();
             toFile.end();
             void app.diskCache.commit(url, contentType).then(() => {
@@ -188,15 +213,14 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
             request.log.error({ err, url }, "Upstream stream error");
             toClient.destroy(err);
             toFile.end();
-            void app.diskCache.commit(url, contentType);
+            void app.diskCache.discard(url);
           });
 
           request.raw.on("close", () => {
+            if (reachedEnd) return; // already committed by the "end" handler above
             source.destroy();
             toFile.end();
-            void app.diskCache.commit(url, contentType).then(() => {
-              void app.diskCache.evict();
-            });
+            void app.diskCache.discard(url);
           });
         }
 

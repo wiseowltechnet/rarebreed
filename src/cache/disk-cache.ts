@@ -127,6 +127,32 @@ export async function createDiskCache(options: DiskCacheOptions = {}) {
     },
 
     /**
+     * Discards a partially-written cache file without committing metadata.
+     *
+     * Call this instead of commit() when the upstream fetch ended early
+     * (error, or the client disconnected before the source stream's own
+     * "end" event) -- writing metadata for whatever partial bytes happen
+     * to be on disk at that point makes a truncated download a permanent,
+     * silent cache HIT for every future request of that URL, since get()
+     * only checks for the *file's* existence and never re-validates size
+     * against anything. Confirmed live: an interrupted ~44-minute episode
+     * fetch left a 67MB file committed as if complete, which then served a
+     * ~78-second HLS transcode forever until this cache entry was manually
+     * deleted -- no amount of retrying playback fixed it, since every
+     * retry was itself a cache hit against the same truncated file.
+     *
+     * No-op (not an error) if nothing was ever written for this URL.
+     */
+    async discard(url: string): Promise<void> {
+      const fp = urlToPath(url);
+      try {
+        await fs.unlink(fp);
+      } catch {
+        // nothing to discard - fine
+      }
+    },
+
+    /**
      * Marks a cached URL as "saved" — will NOT be evicted by LRU.
      * Like pinning an entry in Ehcache (eternal=true).
      */
