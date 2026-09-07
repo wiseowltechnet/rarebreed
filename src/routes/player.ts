@@ -68,22 +68,51 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
 
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:#000;height:100%}video{width:100vw;height:100vh;object-fit:contain}
-#label{position:fixed;top:16px;left:16px;color:#fff;font-family:sans-serif;font-size:28px;text-shadow:0 0 6px #000;z-index:2}</style>
+#label{position:fixed;top:16px;left:16px;color:#fff;font-family:sans-serif;font-size:28px;text-shadow:0 0 6px #000;z-index:2}
+#status{position:fixed;bottom:16px;left:16px;color:#0f0;font-family:monospace;font-size:20px;text-shadow:0 0 6px #000;z-index:2;max-width:90vw}</style>
 </head><body>
 <div id="label">${safeTitle}</div>
+<div id="status">loading player…</div>
 <video id="v" autoplay controls muted></video>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+  function setStatus(msg) { document.getElementById("status").textContent = msg; }
+  window.onerror = function(msg, src, line) { setStatus("JS error: " + msg + " (" + src + ":" + line + ")"); };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js" onload="setStatus('hls.js loaded')" onerror="setStatus('hls.js FAILED to load from CDN')"></script>
 <script>
   var video = document.getElementById("v");
   var src = "/transcode/${safeSession}/playlist.m3u8";
-  if (Hls.isSupported()) {
+  video.addEventListener("error", function() {
+    var e = video.error;
+    setStatus("video error: code " + (e ? e.code : "?"));
+  });
+  video.addEventListener("playing", function() { setStatus("playing"); });
+  if (typeof Hls === "undefined") {
+    setStatus("Hls is undefined -- script did not load");
+  } else if (Hls.isSupported()) {
+    setStatus("attaching hls.js to " + src);
     var hls = new Hls();
+    hls.on(Hls.Events.ERROR, function(event, data) {
+      setStatus("hls.js error: " + data.type + " / " + data.details + (data.fatal ? " (fatal)" : ""));
+    });
     hls.loadSource(src);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, function() { video.muted = true; video.play(); });
+    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+      setStatus("manifest parsed, playing...");
+      video.muted = true;
+      var p = video.play();
+      if (p && p.catch) p.catch(function(err) { setStatus("play() rejected: " + err); });
+    });
   } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    setStatus("using native HLS");
     video.src = src;
-    video.addEventListener("loadedmetadata", function() { video.muted = true; video.play(); });
+    video.addEventListener("loadedmetadata", function() {
+      video.muted = true;
+      var p = video.play();
+      if (p && p.catch) p.catch(function(err) { setStatus("play() rejected: " + err); });
+    });
+  } else {
+    setStatus("HLS not supported by this browser");
   }
 </script>
 </body></html>`;
