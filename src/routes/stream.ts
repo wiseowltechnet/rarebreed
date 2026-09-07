@@ -60,12 +60,24 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         // For live streams: no timeout (infinite stream).
-        // For VOD: 60s timeout to catch hung connections.
+        // For VOD: a generous overall ceiling only, not a stall detector --
+        // that used to be a flat 60s AbortSignal covering the WHOLE
+        // transfer, which killed perfectly healthy but slow downloads
+        // exactly like a genuinely hung one. Confirmed live: a real ~190MB
+        // episode took over 2 minutes to arrive from this IPTV backend
+        // (roughly 1.2 Mbps), so every single fetch was being cut off
+        // around the 60s mark regardless of the disk-cache commit/discard
+        // fix above -- that fix stopped a truncated download from being
+        // served as "complete" forever, but this is why the download kept
+        // getting truncated in the first place. Real stall detection
+        // (below, per-chunk, matching the live path's own pattern) now
+        // does that job; this ceiling is just a backstop for a connection
+        // that opens but the server never sends anything at all.
         const fetchOptions: RequestInit = {
           headers: { "User-Agent": "RareBreed/1.0" },
         };
         if (!isLive) {
-          fetchOptions.signal = AbortSignal.timeout(60_000);
+          fetchOptions.signal = AbortSignal.timeout(30 * 60_000);
         }
 
         const upstream = await fetch(url, fetchOptions);
@@ -195,12 +207,29 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
           // is a genuine cache miss and retries the fetch from scratch.
           let reachedEnd = false;
 
+          // Stall detection: abort only if no NEW bytes arrive for a while,
+          // not based on total elapsed time -- see the fetchOptions comment
+          // above for why a flat overall timeout was wrong here. Mirrors
+          // the live branch's own resetStallTimer/STALL_TIMEOUT pattern.
+          const VOD_STALL_TIMEOUT = 45_000;
+          let stallTimer: ReturnType<typeof setTimeout> | null = null;
+          function resetVodStallTimer(): void {
+            if (stallTimer) clearTimeout(stallTimer);
+            stallTimer = setTimeout(() => {
+              request.log.warn({ url }, "VOD download stalled - aborting");
+              source.destroy(new Error("stalled: no data for " + String(VOD_STALL_TIMEOUT) + "ms"));
+            }, VOD_STALL_TIMEOUT);
+          }
+          resetVodStallTimer();
+
           source.on("data", (chunk: Buffer) => {
+            resetVodStallTimer();
             toClient.write(chunk);
             toFile.write(chunk);
           });
 
           source.on("end", () => {
+            if (stallTimer) clearTimeout(stallTimer);
             reachedEnd = true;
             toClient.end();
             toFile.end();
@@ -210,6 +239,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
           });
 
           source.on("error", (err) => {
+            if (stallTimer) clearTimeout(stallTimer);
             request.log.error({ err, url }, "Upstream stream error");
             toClient.destroy(err);
             toFile.end();
@@ -217,6 +247,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
           });
 
           request.raw.on("close", () => {
+            if (stallTimer) clearTimeout(stallTimer);
             if (reachedEnd) return; // already committed by the "end" handler above
             source.destroy();
             toFile.end();
