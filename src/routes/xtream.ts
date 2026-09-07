@@ -52,7 +52,9 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
   /** Build Xtream API URL */
   function apiUrl(action: string, params: Record<string, string> = {}): string {
     const base = `${server}/player_api.php?username=${username}&password=${password}&action=${action}`;
-    const extra = Object.entries(params).map(([k, v]) => `&${k}=${v}`).join("");
+    const extra = Object.entries(params)
+      .map(([k, v]) => `&${k}=${v}`)
+      .join("");
     return base + extra;
   }
 
@@ -80,7 +82,7 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
       throw new Error(`Xtream API returned ${String(response.status)}`);
     }
 
-    const data = await response.json() as T;
+    const data = (await response.json()) as T;
 
     // Store in all cache layers
     categoryCache.set(cacheKey, { data, timestamp: Date.now() });
@@ -208,9 +210,18 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
         apiUrl("get_series_info", { series_id: id }),
       );
 
+      // The generic type promises episodes is always present, but this is
+      // an external Xtream Codes API response -- its actual shape isn't
+      // guaranteed the way TypeScript's own DOM/stdlib types are, so the
+      // ?? {} fallback is a real defensive guard against a malformed or
+      // partial upstream response, not dead code. eslint's strict typed
+      // check only sees the declared type, hence the disable.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       const seasons = Object.entries(data.episodes ?? {}).map(([season, episodes]) => ({
         season: Number(season),
-        episodes: (episodes as unknown as { id: number; title: string; container_extension: string }[]).map((ep) => ({
+        episodes: (
+          episodes as unknown as { id: number; title: string; container_extension: string }[]
+        ).map((ep) => ({
           name: ep.title,
           url: streamUrl("series", ep.id, ep.container_extension),
           id: ep.id,
@@ -237,9 +248,7 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const contentType: ContentType =
-        type === "vod" || type === "movie" ? "vod"
-        : type === "series" ? "series"
-        : "live";
+        type === "vod" || type === "movie" ? "vod" : type === "series" ? "series" : "live";
 
       const url = streamUrl(contentType, streamId);
       return await reply.send({ url, type: contentType, id: streamId });
@@ -255,11 +264,26 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
 
   /** Words that carry little identifying value on their own. */
   const SEARCH_STOP = new Set([
-    "the", "a", "an", "of", "and", "tv", "channel", "hd", "us", "usa", "uk", "en",
+    "the",
+    "a",
+    "an",
+    "of",
+    "and",
+    "tv",
+    "channel",
+    "hd",
+    "us",
+    "usa",
+    "uk",
+    "en",
   ]);
 
   function searchNorm(s: string): string {
-    return s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    return s
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
   function isWeak(t: string): boolean {
     return SEARCH_STOP.has(t) || /^\d+$/.test(t) || t.length <= 2;
@@ -316,13 +340,24 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
     "/search",
     async (request, reply) => {
       const { q, type, limit } = request.query;
-      if (!q || searchNorm(q).length === 0) {
+      if (!q || q.trim().length === 0) {
         return await reply.status(400).send({ error: "Missing q" });
       }
       const maxResults = Math.min(Math.max(Number(limit ?? 8), 1), 25);
       const typesWanted: ContentType[] = (type ? type.split(",") : ["live", "vod", "series"])
         .map((t) => t.trim())
         .filter((t): t is ContentType => t === "live" || t === "vod" || t === "series");
+
+      // searchNorm/searchScore only match ASCII letters+digits, so a real
+      // query in a non-Latin script (Japanese, Cyrillic, Arabic, etc.)
+      // normalizes to an empty string -- that's a genuine query with zero
+      // matchable candidates against this catalog, not a missing one.
+      // Confirmed live: "日本語テスト" was rejected with the same 400
+      // "Missing q" as an actually-empty string; the correct response is
+      // an empty result set, not a client error.
+      if (searchNorm(q).length === 0) {
+        return await reply.send([]);
+      }
 
       const cacheKey = `search:${searchNorm(q)}:${typesWanted.join(",")}:${String(maxResults)}`;
       const cached = await app.cache.get(`xtream:${cacheKey}`);
@@ -343,7 +378,10 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
         };
 
         const hits: SearchHit[] = [];
-        const isSingleWord = searchNorm(q).split(" ").filter((t) => !isWeak(t)).length <= 1;
+        const isSingleWord =
+          searchNorm(q)
+            .split(" ")
+            .filter((t) => !isWeak(t)).length <= 1;
 
         for (const t of typesWanted) {
           const cats = await fetchCached<XtreamCategory[]>(`${t}-cats`, apiUrl(catActions[t]));
@@ -354,9 +392,10 @@ export async function xtreamRoutes(app: FastifyInstance): Promise<void> {
             );
             for (const it of items) {
               const name = it.name;
-              const id = t === "series"
-                ? (it as XtreamSeriesInfo).series_id
-                : (it as XtreamChannel).stream_id;
+              const id =
+                t === "series"
+                  ? (it as XtreamSeriesInfo).series_id
+                  : (it as XtreamChannel).stream_id;
               const s = searchScore(q, name);
               if (s > 0) hits.push({ id, name, type: t, score: s });
             }
