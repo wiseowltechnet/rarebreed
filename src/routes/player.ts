@@ -41,7 +41,7 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
   // Minimal same-origin HLS.js player for an existing /transcode/:id session.
   // Not part of the Angular app -- a small standalone demo page for showing
   // a pulled stream on the Shield via show-me's show_url tool.
-  app.get<{ Querystring: { session?: string; title?: string } }>(
+  app.get<{ Querystring: { session?: string; title?: string; type?: string } }>(
     "/demo/player",
     {
       schema: {
@@ -53,18 +53,33 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
           properties: {
             session: { type: "string" },
             title: { type: "string" },
+            type: {
+              type: "string",
+              enum: ["transcode", "live"],
+              description:
+                "Session kind -- transcode for VOD/series (default), live for a live-hls session. These are two different endpoints on this same server (/transcode/:id/playlist.m3u8 vs /live-hls/:id/live.m3u8), not interchangeable IDs.",
+            },
           },
           required: ["session"],
         },
       },
     },
     async (request, reply) => {
-      const { session, title } = request.query;
+      const { session, title, type } = request.query;
       if (!session) {
         return await reply.status(400).send({ error: "Missing session" });
       }
       const safeSession = encodeURIComponent(session);
       const safeTitle = escapeHtml(title ?? "Wise Owl");
+      // Confirmed live: a live-hls session ID silently 404d against the
+      // transcode path ("hls.js error: networkError / manifestLoadError"),
+      // since the two session kinds are served from entirely different
+      // routes with no overlap in ID namespace -- there is no way to tell
+      // them apart from the ID alone, so the caller must say which kind.
+      const manifestPath =
+        type === "live"
+          ? `/live-hls/${safeSession}/live.m3u8`
+          : `/transcode/${safeSession}/playlist.m3u8`;
 
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:#000;height:100%}video{width:100vw;height:100vh;object-fit:contain}
@@ -81,7 +96,7 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js" onload="setStatus('hls.js loaded')" onerror="setStatus('hls.js FAILED to load from CDN')"></script>
 <script>
   var video = document.getElementById("v");
-  var src = "/transcode/${safeSession}/playlist.m3u8";
+  var src = "${manifestPath}";
   video.addEventListener("error", function() {
     var e = video.error;
     setStatus("video error: code " + (e ? e.code : "?"));
