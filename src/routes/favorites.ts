@@ -31,12 +31,34 @@ export interface Favorite {
 
 const DATA_PATH = path.join(process.cwd(), "data", "favorites.json");
 
+/** Narrows an unknown value to a string id, without risking String()
+ * silently stringifying an unexpected object/array to `[object Object]`. */
+function toIdString(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return undefined;
+}
+
 /** Load favorites from disk */
 async function loadFavorites(): Promise<Favorite[]> {
   if (!existsSync(DATA_PATH)) return [];
   try {
     const raw = await fs.readFile(DATA_PATH, "utf-8");
-    return JSON.parse(raw) as Favorite[];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Normalize every entry's id to a real string -- a numeric id could
+    // reach disk before this fix (an unvalidated `request.body as
+    // Partial<Favorite>` cast let a JSON number through as if it were the
+    // declared `string` type, e.g. a raw xtream VOD/series id), which then
+    // silently failed every string comparison against a URL param
+    // (`===`/`!==` on mismatched types is never true in JS). Normalizing
+    // once here means every consumer downstream can trust `Favorite.id` is
+    // honestly a string with no special-casing needed at each call site,
+    // and self-heals any already-corrupted data on disk transparently on
+    // the next load.
+    return (parsed as Record<string, unknown>[]).map((entry) => ({
+      ...(entry as unknown as Favorite),
+      id: String(entry.id),
+    }));
   } catch {
     return [];
   }
@@ -70,13 +92,22 @@ export async function favoritesRoutes(app: FastifyInstance): Promise<void> {
 
   // POST /favorites — add a new favorite
   app.post("/", async (request: FastifyRequest, reply: FastifyReply) => {
+    const rawBody = request.body as Record<string, unknown>;
     const body = request.body as Partial<Favorite>;
 
     if (!body.name || !body.type) {
       return reply.status(400).send({ error: "Missing name or type" });
     }
 
-    const id = body.id ?? body.url ?? `${body.type}-${Date.now()}`;
+    // Read id/url as unknown rather than through the Partial<Favorite>
+    // cast above -- that cast only asserts a string, it never validates
+    // one. A caller sending a numeric id (a raw xtream VOD/series id,
+    // e.g. 15712) is real untrusted input the type system has not
+    // actually checked, and coercing it here is what keeps every id on
+    // disk (and therefore every future string comparison against a URL
+    // param) honestly a string from the moment it is first stored.
+    const id =
+      toIdString(rawBody.id) ?? toIdString(rawBody.url) ?? `${body.type}-${String(Date.now())}`;
 
     const favorites = await loadFavorites();
 
