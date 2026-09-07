@@ -1,6 +1,6 @@
 // src/app.ts
-// App factory — builds and configures Fastify WITHOUT listening.
-// Like @SpringBootTest(webEnvironment = MOCK) — creates the context, doesn't bind a port.
+// App factory � builds and configures Fastify WITHOUT listening.
+// Like @SpringBootTest(webEnvironment = MOCK) � creates the context, doesn't bind a port.
 //
 // server.ts calls buildApp() + listen() for production.
 // Tests call buildApp() + inject() for in-process HTTP testing (MockMvc pattern).
@@ -73,7 +73,7 @@ export async function buildApp() {
     credentials: true,
   });
 
-  // Security headers — like Spring Security http.headers()
+  // Security headers � like Spring Security http.headers()
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -83,9 +83,18 @@ export async function buildApp() {
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "https://image.tmdb.org", "http:", "https:"],
-        mediaSrc: ["'self'", "blob:", "http:", "https:"],  // HLS.js uses blob: URLs for video
-        connectSrc: ["'self'", "blob:"],  // HLS.js fetch + blob
-        workerSrc: ["'self'", "blob:"],   // HLS.js web worker
+        mediaSrc: ["'self'", "blob:", "http:", "https:"], // HLS.js uses blob: URLs for video
+        connectSrc: ["'self'", "blob:"], // HLS.js fetch + blob
+        workerSrc: ["'self'", "blob:"], // HLS.js web worker
+        // Helmet adds this directive by default, which tells the browser to
+        // silently rewrite every http: subresource request (including
+        // same-origin ones) to https: -- there is no TLS listener on this
+        // app anywhere, so that rewrite just fails the connection instead.
+        // Confirmed live: HLS.js's manifest fetch to a same-origin relative
+        // /transcode/:id/playlist.m3u8 URL failed with
+        // "networkError / manifestLoadError" purely because of this
+        // silent upgrade, even though the same URL curled fine directly.
+        upgradeInsecureRequests: null,
       },
     },
   });
@@ -103,44 +112,44 @@ export async function buildApp() {
   // Error handler before routes
   registerErrorHandler(app);
 
-  // Cache — L1 (memory) + L2 (Redis) tiered
+  // Cache � L1 (memory) + L2 (Redis) tiered
   // Like @Bean CacheManager with CompositeCacheManager(caffeine, redis)
   const cache = createTieredCache({
-    l1: createMemoryCache({ max: 50, ttlMs: 5 * 60_000 }),   // 5 min local
-    l2: createRedisCache({ ttlMs: 10 * 60_000 }),            // 10 min shared
+    l1: createMemoryCache({ max: 50, ttlMs: 5 * 60_000 }), // 5 min local
+    l2: createRedisCache({ ttlMs: 10 * 60_000 }), // 10 min shared
   });
 
-  // Decorate app with cache — like registering a @Bean in Spring context
+  // Decorate app with cache � like registering a @Bean in Spring context
   // Routes access it via: app.cache.get(key)
   app.decorate("cache", cache);
 
   // Disk cache for video streams (bounded by available disk - 10%)
   // Like Ehcache disk tier or Nginx proxy_cache
-  const diskCache = await createDiskCache({ minFreeRatio: 0.10 });
+  const diskCache = await createDiskCache({ minFreeRatio: 0.1 });
   app.decorate("diskCache", diskCache);
 
-  // Watched-episode auto-cleaner — deletes cached episodes X days after completion
+  // Watched-episode auto-cleaner � deletes cached episodes X days after completion
   // Like @Scheduled + CacheEvictionPolicy in Spring
   const watchedCleaner = createWatchedCleaner(diskCache);
   app.decorate("watchedCleaner", watchedCleaner);
   watchedCleaner.start();
 
   // Stop cleaner on shutdown
-  app.addHook("onClose", async () => {
+  app.addHook("onClose", () => {
     watchedCleaner.stop();
   });
 
-  // Series cacher — background downloads episodes of followed series
-  // Like Netflix Smart Downloads — pre-fetches next episodes automatically
+  // Series cacher � background downloads episodes of followed series
+  // Like Netflix Smart Downloads � pre-fetches next episodes automatically
   const seriesCacher = createSeriesCacher(app);
   app.decorate("seriesCacher", seriesCacher);
 
   // Stop cacher on shutdown
-  app.addHook("onClose", async () => {
+  app.addHook("onClose", () => {
     seriesCacher.stop();
   });
 
-  // Auth guard — like Spring Security filter chain
+  // Auth guard � like Spring Security filter chain
   // Must be AFTER cookie plugin (needs cookies parsed) and BEFORE routes
   registerAuthGuard(app);
 
