@@ -73,11 +73,32 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       // If session already exists and playlist is ready, just return it
       const playlistPath = path.join(sessionDir, "playlist.m3u8");
       if (existsSync(playlistPath)) {
-        return await reply.send({
-          id,
-          playlist: `/transcode/${id}/playlist.m3u8`,
-          status: "ready",
-        });
+        // A playlist existing on disk is not proof the underlying source
+        // was ever fully downloaded -- the previous attempt's ffmpeg
+        // process exits cleanly (writing a normal-looking #EXT-X-ENDLIST)
+        // even when its input was silently truncated by an interrupted
+        // upstream fetch, since ffmpeg only ever sees a closed pipe, never
+        // the fetch error behind it. Confirmed live: an upstream timeout
+        // produced a valid-looking ~77-second playlist that then kept
+        // serving as "ready" on every retry, even after the underlying
+        // disk cache itself had already been fixed (see stream.ts and
+        // disk-cache.ts) to stop committing that exact kind of interrupted
+        // download -- this route had an identical blind-trust bug one
+        // layer up. Now cross-checked against the disk cache (the source
+        // of truth for "was this URL's download ever actually completed")
+        // before trusting a leftover playlist. Live URLs are exempt --
+        // they are intentionally never disk-cached (see stream.ts), so
+        // absence from the cache says nothing about them.
+        const cached = await app.diskCache.get(url);
+        if (cached || url.includes("/live/")) {
+          return await reply.send({
+            id,
+            playlist: `/transcode/${id}/playlist.m3u8`,
+            status: "ready",
+          });
+        }
+        // Leftover from an interrupted attempt -- discard and re-transcode.
+        await fs.rm(sessionDir, { recursive: true, force: true });
       }
 
       // Create session directory
