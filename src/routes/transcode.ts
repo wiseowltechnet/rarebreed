@@ -24,6 +24,11 @@ interface TranscodeSession {
   process: ChildProcess;
   dir: string;
   startedAt: number;
+  // Updated on every playlist/segment request. The cleanup job kills on
+  // *idle* time (no client polling), not on total elapsed time -- ffmpeg
+  // keeps running the whole time a viewer is actually watching, however
+  // long the source video is.
+  lastAccessedAt: number;
 }
 
 const sessions = new Map<string, TranscodeSession>();
@@ -91,21 +96,36 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       const port = (request.server.addresses()[0] as { port: number } | undefined)?.port ?? 3000;
       const inputUrl = `http://127.0.0.1:${String(port)}/stream?url=${encodeURIComponent(url)}`;
 
-      const ffmpeg = spawn("ffmpeg", [
-        "-i", inputUrl,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-tune", "zerolatency",
-        "-c:a", "aac",
-        "-ac", "2",
-        "-f", "hls",
-        "-hls_time", "4",
-        "-hls_list_size", "0",
-        "-hls_flags", "independent_segments",
-        "-hls_segment_filename", path.join(sessionDir, "seg%03d.ts"),
-        "-y",
-        playlistPath,
-      ], { stdio: ["ignore", "ignore", "pipe"] });
+      const ffmpeg = spawn(
+        "ffmpeg",
+        [
+          "-i",
+          inputUrl,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "ultrafast",
+          "-tune",
+          "zerolatency",
+          "-c:a",
+          "aac",
+          "-ac",
+          "2",
+          "-f",
+          "hls",
+          "-hls_time",
+          "4",
+          "-hls_list_size",
+          "0",
+          "-hls_flags",
+          "independent_segments",
+          "-hls_segment_filename",
+          path.join(sessionDir, "seg%03d.ts"),
+          "-y",
+          playlistPath,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
 
       // Log ffmpeg stderr for debugging
       let ffmpegLog = "";
@@ -115,7 +135,10 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
 
       ffmpeg.on("exit", (code) => {
         if (code !== 0 && code !== 255) {
-          request.log.warn({ id, code, log: ffmpegLog.substring(0, 500) }, "ffmpeg exited with error");
+          request.log.warn(
+            { id, code, log: ffmpegLog.substring(0, 500) },
+            "ffmpeg exited with error",
+          );
         }
         sessions.delete(id);
       });
@@ -126,7 +149,14 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       });
 
       // Track session
-      sessions.set(id, { id, url, process: ffmpeg, dir: sessionDir, startedAt: Date.now() });
+      sessions.set(id, {
+        id,
+        url,
+        process: ffmpeg,
+        dir: sessionDir,
+        startedAt: Date.now(),
+        lastAccessedAt: Date.now(),
+      });
 
       // Wait briefly for ffmpeg to produce the initial playlist
       // (usually < 2 seconds for the first segment)
@@ -150,6 +180,15 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       return await reply.status(404).send({ error: "Playlist not found" });
     }
 
+    // A playlist poll counts as activity -- keeps a genuinely-still-being-
+    // watched session (a long movie, a full episode) alive past its
+    // in-memory session's startedAt. See the cleanup job below: it was
+    // previously killing sessions on total elapsed time since start rather
+    // than on idle time, silently cutting off playback of anything over
+    // 30 minutes regardless of whether the viewer was still watching.
+    const session = sessions.get(id);
+    if (session) session.lastAccessedAt = Date.now();
+
     const content = await fs.readFile(playlistPath, "utf-8");
     return await reply
       .header("Content-Type", "application/vnd.apple.mpegurl")
@@ -166,10 +205,12 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       return await reply.status(404).send({ error: "Segment not found" });
     }
 
+    // Same reasoning as the playlist route above -- a segment fetch is activity.
+    const session = sessions.get(id);
+    if (session) session.lastAccessedAt = Date.now();
+
     const stream = createReadStream(segmentPath);
-    return await reply
-      .header("Content-Type", "video/mp2t")
-      .send(stream);
+    return await reply.header("Content-Type", "video/mp2t").send(stream);
   });
 
   // GET /transcode/sessions — list active sessions (for debugging/health)
@@ -179,6 +220,8 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       url: s.url,
       startedAt: new Date(s.startedAt).toISOString(),
       runningSeconds: Math.floor((Date.now() - s.startedAt) / 1000),
+      lastAccessedAt: new Date(s.lastAccessedAt).toISOString(),
+      idleSeconds: Math.floor((Date.now() - s.lastAccessedAt) / 1000),
     }));
     return await reply.send(active);
   });
@@ -196,21 +239,32 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
     return await reply.send({ success: true, id });
   });
 
-  // Cleanup job — delete stale transcode sessions after 30 minutes of inactivity
-  // Like: Plex's "terminate inactive transcode sessions" feature
+  // Cleanup job — kill active transcodes after 30 minutes of inactivity, and
+  // delete orphaned directories left over from a previous run.
+  // Like: Plex's "terminate inactive transcode sessions" feature.
+  //
+  // The active-session check below used to compare against startedAt (total
+  // elapsed time since ffmpeg was first spawned) rather than idle time --
+  // that silently killed a session, and thus playback, partway through any
+  // video longer than 30 minutes even while someone was actively watching,
+  // contradicting this job's own "inactivity" name and comment. Fixed to
+  // compare against lastAccessedAt, which the playlist/segment routes above
+  // now bump on every request, so a still-being-watched session survives
+  // indefinitely and only a truly abandoned one (client stopped polling,
+  // e.g. closed the tab) gets reaped after 30 idle minutes.
   const CLEANUP_INTERVAL_MS = 5 * 60_000; // check every 5 minutes
-  const MAX_SESSION_AGE_MS = 30 * 60_000; // 30 minutes max session lifetime
+  const IDLE_TIMEOUT_MS = 30 * 60_000; // 30 minutes of no playlist/segment requests
 
   const cleanupInterval = setInterval(() => {
     void (async () => {
       const now = Date.now();
 
-      // 1. Kill old active sessions
+      // 1. Kill idle active sessions
       for (const [id, session] of sessions) {
-        if (now - session.startedAt > MAX_SESSION_AGE_MS) {
+        if (now - session.lastAccessedAt > IDLE_TIMEOUT_MS) {
           session.process.kill();
           sessions.delete(id);
-          app.log.info({ id }, "Cleaned up stale transcode session");
+          app.log.info({ id }, "Cleaned up idle transcode session");
         }
       }
 
@@ -224,7 +278,7 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
           const stat = await fs.stat(dirPath);
 
           // Delete if older than max age and no active session
-          if (stat.isDirectory() && now - stat.mtimeMs > MAX_SESSION_AGE_MS) {
+          if (stat.isDirectory() && now - stat.mtimeMs > IDLE_TIMEOUT_MS) {
             await fs.rm(dirPath, { recursive: true, force: true });
             app.log.info({ dir }, "Cleaned up orphaned transcode directory");
           }
