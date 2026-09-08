@@ -1,6 +1,6 @@
 // src/app.ts
-// App factory � builds and configures Fastify WITHOUT listening.
-// Like @SpringBootTest(webEnvironment = MOCK) � creates the context, doesn't bind a port.
+// App factory -- builds and configures Fastify WITHOUT listening.
+// Like @SpringBootTest(webEnvironment = MOCK) -- creates the context, doesn't bind a port.
 //
 // server.ts calls buildApp() + listen() for production.
 // Tests call buildApp() + inject() for in-process HTTP testing (MockMvc pattern).
@@ -73,7 +73,7 @@ export async function buildApp() {
     credentials: true,
   });
 
-  // Security headers � like Spring Security http.headers()
+  // Security headers -- like Spring Security http.headers()
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -112,14 +112,14 @@ export async function buildApp() {
   // Error handler before routes
   registerErrorHandler(app);
 
-  // Cache � L1 (memory) + L2 (Redis) tiered
+  // Cache -- L1 (memory) + L2 (Redis) tiered
   // Like @Bean CacheManager with CompositeCacheManager(caffeine, redis)
   const cache = createTieredCache({
     l1: createMemoryCache({ max: 50, ttlMs: 5 * 60_000 }), // 5 min local
     l2: createRedisCache({ ttlMs: 10 * 60_000 }), // 10 min shared
   });
 
-  // Decorate app with cache � like registering a @Bean in Spring context
+  // Decorate app with cache -- like registering a @Bean in Spring context
   // Routes access it via: app.cache.get(key)
   app.decorate("cache", cache);
 
@@ -128,9 +128,9 @@ export async function buildApp() {
   const diskCache = await createDiskCache({ minFreeRatio: 0.1 });
   app.decorate("diskCache", diskCache);
 
-  // Watched-episode auto-cleaner � deletes cached episodes X days after completion
+  // Watched-episode auto-cleaner -- deletes cached episodes X days after completion
   // Like @Scheduled + CacheEvictionPolicy in Spring
-  const watchedCleaner = createWatchedCleaner(diskCache);
+  const watchedCleaner = createWatchedCleaner(diskCache, app.log);
   app.decorate("watchedCleaner", watchedCleaner);
   watchedCleaner.start();
 
@@ -139,8 +139,8 @@ export async function buildApp() {
     watchedCleaner.stop();
   });
 
-  // Series cacher � background downloads episodes of followed series
-  // Like Netflix Smart Downloads � pre-fetches next episodes automatically
+  // Series cacher -- background downloads episodes of followed series
+  // Like Netflix Smart Downloads -- pre-fetches next episodes automatically
   const seriesCacher = createSeriesCacher(app);
   app.decorate("seriesCacher", seriesCacher);
 
@@ -149,7 +149,7 @@ export async function buildApp() {
     seriesCacher.stop();
   });
 
-  // Auth guard � like Spring Security filter chain
+  // Auth guard -- like Spring Security filter chain
   // Must be AFTER cookie plugin (needs cookies parsed) and BEFORE routes
   registerAuthGuard(app);
 

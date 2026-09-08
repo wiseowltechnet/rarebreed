@@ -24,12 +24,37 @@ interface QueuedEpisode {
   readonly url: string;
 }
 
+/** Per-series download bookkeeping, including the telemetry fields below. */
+interface SeriesStats {
+  /** Stored directly here rather than derived from currentDownload -- see
+   * the getStatus() comment below for why the old derivation was buggy. */
+  name: string;
+  total: number;
+  cached: number;
+  /** Episodes this session has attempted (succeeded + failed), for
+   * progress/telemetry visibility a caller can't get from cached/total
+   * alone once retries or failures are in the mix. */
+  attempted: number;
+  failed: number;
+  /** Message from the most recent failure, if any -- lets a caller/log
+   * consumer see *why* progress stalled without grepping the log file. */
+  lastError?: string;
+  /** Cumulative bytes actually written to disk across all episodes of
+   * this series this session (not upstream Content-Length, which some
+   * sources omit or lie about -- this is what was really persisted). */
+  bytesDownloaded: number;
+}
+
 /** Download status for a series */
 export interface SeriesCacheStatus {
   seriesId: number;
   seriesName: string;
   totalEpisodes: number;
   cachedEpisodes: number;
+  attemptedEpisodes: number;
+  failedEpisodes: number;
+  bytesDownloaded: number;
+  lastError?: string | undefined;
   downloading: boolean;
   currentEpisode?: string | undefined;
 }
@@ -48,7 +73,7 @@ export function createSeriesCacher(app: FastifyInstance) {
   const queuedSeries = new Set<number>();
 
   /** Track download stats per series */
-  const stats = new Map<number, { total: number; cached: number }>();
+  const stats = new Map<number, SeriesStats>();
 
   /**
    * Queue all episodes of a series for background caching.
@@ -72,8 +97,9 @@ export function createSeriesCacher(app: FastifyInstance) {
       });
 
       if (response.statusCode !== 200) {
-        console.log(
-          `[series-cacher] Failed to fetch episodes for ${seriesName}: ${String(response.statusCode)}`,
+        app.log.warn(
+          { seriesId, seriesName, statusCode: response.statusCode },
+          "[series-cacher] Failed to fetch episode list",
         );
         return { queued: 0, alreadyCached: 0 };
       }
@@ -109,10 +135,18 @@ export function createSeriesCacher(app: FastifyInstance) {
       }
 
       const totalEps = seasons.reduce((sum, s) => sum + s.episodes.length, 0);
-      stats.set(seriesId, { total: totalEps, cached: alreadyCached });
+      stats.set(seriesId, {
+        name: seriesName,
+        total: totalEps,
+        cached: alreadyCached,
+        attempted: 0,
+        failed: 0,
+        bytesDownloaded: 0,
+      });
 
-      console.log(
-        `[series-cacher] Queued ${String(queued)} episodes for "${seriesName}" (${String(alreadyCached)} already cached)`,
+      app.log.info(
+        { seriesId, seriesName, queued, alreadyCached, totalEpisodes: totalEps },
+        "[series-cacher] Queued series for background caching",
       );
 
       // Start processing if not already running
@@ -120,7 +154,10 @@ export function createSeriesCacher(app: FastifyInstance) {
 
       return { queued, alreadyCached };
     } catch (err) {
-      console.error(`[series-cacher] Error queuing ${seriesName}:`, err);
+      app.log.error(
+        { seriesId, seriesName, err: err instanceof Error ? err.message : String(err) },
+        "[series-cacher] Error queuing series",
+      );
       return { queued: 0, alreadyCached: 0 };
     }
   }
@@ -136,16 +173,30 @@ export function createSeriesCacher(app: FastifyInstance) {
       const episode = next;
       currentDownload = episode;
 
+      const s = stats.get(episode.seriesId);
+      if (s) s.attempted++;
+
       try {
-        await downloadEpisode(episode);
+        const bytes = await downloadEpisode(episode);
 
         // Update stats
-        const s = stats.get(episode.seriesId);
-        if (s) s.cached++;
+        if (s) {
+          s.cached++;
+          s.bytesDownloaded += bytes;
+        }
       } catch (err) {
-        // Log and continue with next episode
+        // Log and continue with next episode -- one bad episode (a dead
+        // upstream link, a transient network blip) shouldn't stall every
+        // episode queued behind it.
         const msg = err instanceof Error ? err.message : "Unknown error";
-        console.log(`[series-cacher] Failed: ${episode.episodeName} — ${msg}`);
+        if (s) {
+          s.failed++;
+          s.lastError = msg;
+        }
+        app.log.warn(
+          { seriesId: episode.seriesId, episodeName: episode.episodeName, err: msg },
+          "[series-cacher] Episode download failed",
+        );
       }
 
       currentDownload = null;
@@ -157,37 +208,69 @@ export function createSeriesCacher(app: FastifyInstance) {
     isProcessing = false;
   }
 
-  /** Download a single episode into disk cache */
-  async function downloadEpisode(episode: QueuedEpisode): Promise<void> {
+  /** Download a single episode into disk cache. Returns bytes written. */
+  async function downloadEpisode(episode: QueuedEpisode): Promise<number> {
     abortController = new AbortController();
+    const startedAt = Date.now();
 
-    console.log(
-      `[series-cacher] Downloading: ${episode.seriesName} S${String(episode.season)} — ${episode.episodeName}`,
+    app.log.info(
+      { seriesName: episode.seriesName, season: episode.season, episodeName: episode.episodeName },
+      "[series-cacher] Downloading episode",
     );
 
-    const upstream = await fetch(episode.url, {
-      headers: { "User-Agent": "RareBreed/1.0" },
-      signal: abortController.signal,
-    });
+    try {
+      const upstream = await fetch(episode.url, {
+        headers: { "User-Agent": "RareBreed/1.0" },
+        signal: abortController.signal,
+      });
 
-    if (!upstream.ok || !upstream.body) {
-      throw new Error(`Upstream ${String(upstream.status)}`);
+      if (!upstream.ok || !upstream.body) {
+        throw new Error(`Upstream ${String(upstream.status)}`);
+      }
+
+      const contentType = upstream.headers.get("content-type") ?? "video/mp4";
+
+      // Stream to disk cache
+      const source = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
+
+      const { stream: toFile } = app.diskCache.createWriteStream(episode.url);
+
+      await pipeline(source, toFile);
+
+      // Commit to cache
+      await app.diskCache.commit(episode.url, contentType);
+
+      const durationMs = Date.now() - startedAt;
+      const bytes = toFile.bytesWritten;
+      const throughputKBs = durationMs > 0 ? Math.round(bytes / 1024 / (durationMs / 1000)) : 0;
+
+      app.log.info(
+        { episodeName: episode.episodeName, bytes, durationMs, throughputKBs },
+        "[series-cacher] Episode cached",
+      );
+
+      abortController = null;
+      return bytes;
+    } catch (err) {
+      // Without this, an aborted or failed download (stop(), a network
+      // error, disk full) left its partial file permanently orphaned on
+      // disk with no cache metadata -- invisible to every existing
+      // accounting path (it's not a committed cache entry, so nothing
+      // ever counts it, evicts it, or reports it). Confirmed live: a
+      // stopped follow-download left a real 295MB partial file sitting
+      // in cache/video/ indefinitely after follow/stop reported success.
+      // This mirrors disk-cache.ts's own discard() rationale for the
+      // sibling bug already fixed one layer up in stream.ts/transcode.ts
+      // (a truncated download silently committed as "complete") -- this
+      // was the same class of bug at the point the file is never
+      // committed at all. discard() is itself best-effort (a no-op, not
+      // an error, if nothing was ever written for this URL -- see its own
+      // doc comment in disk-cache.ts), so it's always safe to call here
+      // even if the fetch itself failed before any bytes were written.
+      await app.diskCache.discard(episode.url);
+      abortController = null;
+      throw err;
     }
-
-    const contentType = upstream.headers.get("content-type") ?? "video/mp4";
-
-    // Stream to disk cache
-    const source = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
-
-    const { stream: toFile } = app.diskCache.createWriteStream(episode.url);
-
-    await pipeline(source, toFile);
-
-    // Commit to cache
-    await app.diskCache.commit(episode.url, contentType);
-
-    console.log(`[series-cacher] Cached: ${episode.episodeName}`);
-    abortController = null;
   }
 
   return {
@@ -198,16 +281,23 @@ export function createSeriesCacher(app: FastifyInstance) {
     getStatus(): SeriesCacheStatus[] {
       const result: SeriesCacheStatus[] = [];
       for (const [seriesId, s] of stats) {
-        const name = [...queuedSeries].includes(seriesId)
-          ? currentDownload?.seriesId === seriesId
-            ? currentDownload.seriesName
-            : ""
-          : "";
+        // Previously derived from currentDownload alone, which meant the
+        // name (and downloading/currentEpisode) went blank/false for the
+        // ~2s courtesy delay between every episode -- not actually
+        // between series, just between episodes of the SAME series still
+        // actively queued. Confirmed live via 1s-interval polling during
+        // a real download. The name now comes from the series' own
+        // stored stats, so it stays stable for the whole time a series is
+        // queued regardless of the current inter-episode gap.
         result.push({
           seriesId,
-          seriesName: name || `Series ${String(seriesId)}`,
+          seriesName: s.name,
           totalEpisodes: s.total,
           cachedEpisodes: s.cached,
+          attemptedEpisodes: s.attempted,
+          failedEpisodes: s.failed,
+          bytesDownloaded: s.bytesDownloaded,
+          lastError: s.lastError,
           downloading: currentDownload?.seriesId === seriesId,
           currentEpisode:
             currentDownload?.seriesId === seriesId ? currentDownload.episodeName : undefined,

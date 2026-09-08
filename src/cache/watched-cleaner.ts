@@ -18,6 +18,18 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { DiskCache } from "./disk-cache.js";
 
+/** Minimal logger shape -- matches Fastify's app.log, defaults to console
+ * so this module stays usable/testable without a full Fastify instance. */
+interface Logger {
+  info: (obj: object, msg: string) => void;
+}
+
+const consoleLogger: Logger = {
+  info: (obj, msg) => {
+    console.log(`[watched-cleaner] ${msg}`, obj);
+  },
+};
+
 /** A completed episode record (server-side) */
 export interface CompletedEpisode {
   /** Stream URL (cache key) */
@@ -42,9 +54,18 @@ interface WatchedCleanerOptions {
  * Call start() to begin periodic cleanup, stop() to halt.
  *
  * @param diskCache - The disk cache instance to delete from
+ * @param logger - Structured logger (defaults to console for standalone use).
+ *   The rest of the app logs through Fastify's app.log (pino, structured
+ *   JSON); this module previously used raw console.log/console.error, which
+ *   meant its events were invisible to any log-tooling/telemetry consumer
+ *   parsing the log file as structured JSON.
  * @param options - Retention period and interval config
  */
-export function createWatchedCleaner(diskCache: DiskCache, options: WatchedCleanerOptions = {}) {
+export function createWatchedCleaner(
+  diskCache: DiskCache,
+  logger: Logger = consoleLogger,
+  options: WatchedCleanerOptions = {},
+) {
   const {
     logPath = path.join(process.cwd(), "data", "watched-log.json"),
     retentionDays = Number(process.env.WATCHED_RETENTION_DAYS) || 3,
@@ -124,8 +145,9 @@ export function createWatchedCleaner(diskCache: DiskCache, options: WatchedClean
         const success = await diskCache.del(entry.url);
         if (success) {
           deleted++;
-          console.log(
-            `[watched-cleaner] Deleted: ${entry.name} (watched ${String(Math.round((Date.now() - entry.completedAt) / 86400000))}d ago)`,
+          logger.info(
+            { name: entry.name, watchedDaysAgo: Math.round((Date.now() - entry.completedAt) / 86400000) },
+            "Deleted watched episode from cache",
           );
         }
       }
@@ -144,25 +166,22 @@ export function createWatchedCleaner(diskCache: DiskCache, options: WatchedClean
     /** Start the periodic cleanup timer */
     start(): void {
       if (timer) return; // already running
-      console.log(
-        `[watched-cleaner] Started — retention: ${String(retentionDays)} days, interval: ${String(intervalMs / 60000)} min`,
+      logger.info(
+        { retentionDays, intervalMinutes: intervalMs / 60000 },
+        "Watched-episode cleaner started",
       );
 
       // Run immediately on start, then on interval
       void this.cleanup().then(({ deleted, remaining }) => {
         if (deleted > 0) {
-          console.log(
-            `[watched-cleaner] Initial cleanup: deleted ${String(deleted)}, ${String(remaining)} pending`,
-          );
+          logger.info({ deleted, remaining }, "Initial watched-episode cleanup");
         }
       });
 
       timer = setInterval(() => {
         void this.cleanup().then(({ deleted, remaining }) => {
           if (deleted > 0) {
-            console.log(
-              `[watched-cleaner] Periodic cleanup: deleted ${String(deleted)}, ${String(remaining)} pending`,
-            );
+            logger.info({ deleted, remaining }, "Periodic watched-episode cleanup");
           }
         });
       }, intervalMs);

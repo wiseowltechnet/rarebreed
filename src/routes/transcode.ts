@@ -29,6 +29,16 @@ interface TranscodeSession {
   // keeps running the whole time a viewer is actually watching, however
   // long the source video is.
   lastAccessedAt: number;
+  /** How long waitForFile() took to confirm (or give up on) the initial
+   * playlist, in ms. null until that wait resolves. Telemetry only --
+   * playback itself doesn't depend on this being accurate, HLS.js retries
+   * on its own, but it's what proved the "usually < 2 seconds" comment
+   * below was wrong (real calls were consistently hitting the full
+   * timeout) and is worth keeping visible for future tuning. */
+  manifestWaitMs: number | null;
+  /** Whether waitForFile() actually confirmed the playlist before the
+   * POST / response was sent, vs. hit the timeout and responded anyway. */
+  manifestConfirmed: boolean | null;
 }
 
 const sessions = new Map<string, TranscodeSession>();
@@ -177,16 +187,46 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
         dir: sessionDir,
         startedAt: Date.now(),
         lastAccessedAt: Date.now(),
+        manifestWaitMs: null,
+        manifestConfirmed: null,
       });
 
-      // Wait briefly for ffmpeg to produce the initial playlist
-      // (usually < 2 seconds for the first segment)
-      await waitForFile(playlistPath, 10_000);
+      // Wait briefly for ffmpeg to produce the initial playlist. The
+      // comment here used to claim "usually < 2 seconds" but nothing ever
+      // checked whether that held -- waitForFile()'s return value was
+      // discarded, so the response always claimed status: "transcoding"
+      // whether or not a manifest actually existed yet. Confirmed live:
+      // every observed call took the full 10s ceiling (own-server stream
+      // proxy round trip + upstream fetch + ultrafast-preset first
+      // segment, not "< 2 seconds"), and one session genuinely 404'd on
+      // its playlist for several seconds after this response returned --
+      // playback only survived because HLS.js retries manifest loads
+      // internally. The wait now feeds real telemetry instead of being
+      // thrown away.
+      const waitStart = Date.now();
+      const manifestConfirmed = await waitForFile(playlistPath, 10_000);
+      const manifestWaitMs = Date.now() - waitStart;
+
+      const session = sessions.get(id);
+      if (session) {
+        session.manifestWaitMs = manifestWaitMs;
+        session.manifestConfirmed = manifestConfirmed;
+      }
+
+      if (manifestConfirmed) {
+        request.log.info({ id, manifestWaitMs }, "Transcode manifest confirmed ready");
+      } else {
+        request.log.warn(
+          { id, manifestWaitMs },
+          "Transcode manifest not confirmed within timeout -- responding anyway, relying on client retry",
+        );
+      }
 
       return await reply.send({
         id,
         playlist: `/transcode/${id}/playlist.m3u8`,
         status: "transcoding",
+        manifestReady: manifestConfirmed,
       });
     },
   );
@@ -243,6 +283,8 @@ export async function transcodeRoutes(app: FastifyInstance): Promise<void> {
       runningSeconds: Math.floor((Date.now() - s.startedAt) / 1000),
       lastAccessedAt: new Date(s.lastAccessedAt).toISOString(),
       idleSeconds: Math.floor((Date.now() - s.lastAccessedAt) / 1000),
+      manifestWaitMs: s.manifestWaitMs,
+      manifestConfirmed: s.manifestConfirmed,
     }));
     return await reply.send(active);
   });
